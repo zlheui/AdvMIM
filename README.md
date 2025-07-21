@@ -1,7 +1,7 @@
-# FLARE25-Task3-AdvMIM
+# AdvMIM-FLARE25-Task3
 
 ## Overview
-This work solves the unsupervised cross-modal domain adaptation task by generating synthetic MRI/PET data and adopting adversarial masked image modeling (AdvMIM) method (which is proposed by our work [AdvMIM: Adversarial Masked Image Modeling for Semi-Supervised Medical Image Segmentation](https://arxiv.org/abs/2506.20563).
+The repository contains the code for our paper [AdvMIM: Adversarial Masked Image Modeling for Semi-Supervised Medical Image Segmentation](https://arxiv.org/abs/2506.20563). We also provide intructions to apply our method for the unsupervised cross-modal domain adaptation task FLARE25-Task3 by generating synthetic MRI/PET data.
 
 
 ## Environments and Requirements
