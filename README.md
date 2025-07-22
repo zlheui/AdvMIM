@@ -13,6 +13,7 @@ To set up the environment, follow these steps:
 ```
 conda create -n AdvMIM python=3.9.7
 conda activate AdvMIM
+pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113
 pip install -r requirements.txt
 ```
 
@@ -88,22 +89,12 @@ To run the inference using Docker, use the following command:
 > Note: This is the official inference script. When running predictions, please replace `input_dir` and `output_dir` with your own input and output directories. The input MRI or PET images must be in `.nii.gz` format.
 
 ```bash
-docker run --gpus "device=0"  \
-   -m 28G  \
-   --rm  \
-   -v  input_dir:/workspace/inputs/ \
-   -v  output_dir:/workspace/outputs/ \
-   omnigraft:latest /bin/bash -c "sh predict.sh MRI"
+docker run --gpus "device=0" --runtime=nvidia -m 28G --name advmim --rm -v input_dir:/workspace/inputs/ -v output_dir:/workspace/outputs/ advmim_flare25_task3:latest /bin/bash -c "sh predict.sh MRI"
 
-docker run --gpus "device=0"  \
-   -m 28G  \
-   --rm  \
-   -v  input_dir:/workspace/inputs/ \
-   -v  output_dir:/workspace/outputs/ \
-   omnigraft:latest /bin/bash -c "sh predict.sh PET"
+docker run --gpus "device=0" --runtime=nvidia -m 28G --name advmim --rm -v input_dir:/workspace/inputs/ -v output_dir:/workspace/outputs/ advmim_flare25_task3:latest /bin/bash -c "sh predict.sh PET"
 ```
 
-Docker Container download link [Onedrive]() 
+Docker Container download link [Onedrive](https://huggingface.co/zlheui2/FLARE25-Task3-AdvMIM/tree/main) 
 
 ## 📋 Results
 
@@ -112,13 +103,13 @@ Our method achieves the following performance on [FLARE25](https://www.codabench
 MRI Data
 | Dataset Name       | DSC(%) | NSD(%) |
 |--------------------|:------:|:------:|
-| Validation Dataset | 54.74% | 57.13% |
+| Validation Dataset | 55.39% | 57.87% |
 | Test Dataset       | (?) | (?) |
 
 PET Data
 | Dataset Name       | DSC(%) | NSD(%) |
 |--------------------|:------:|:------:|
-| Validation Dataset | 52.62% | 32.50% |
+| Validation Dataset | 52.85% | 32.69% |
 | Test Dataset       | (?) | (?) |
 
 ## Acknowledgement
