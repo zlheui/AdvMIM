@@ -94,7 +94,7 @@ docker run --gpus "device=0" --runtime=nvidia -m 28G --name advmim --rm -v input
 docker run --gpus "device=0" --runtime=nvidia -m 28G --name advmim --rm -v input_dir:/workspace/inputs/ -v output_dir:/workspace/outputs/ advmim_flare25_task3:latest /bin/bash -c "sh predict.sh PET"
 ```
 
-Docker Container download link [Onedrive](https://huggingface.co/zlheui2/FLARE25-Task3-AdvMIM/tree/main) 
+Docker Container and Model Checkpoints download link [Hugging Face](https://huggingface.co/zlheui2/FLARE25-Task3-AdvMIM/tree/main) 
 
 ## 📋 Results
 
