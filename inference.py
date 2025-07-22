@@ -21,6 +21,7 @@ import scipy
 
 import nibabel as nib
 from nibabel.orientations import aff2axcodes
+from typing import Tuple
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
@@ -54,6 +55,82 @@ args = parser.parse_args()
 args.patch_size = [224, 224]
 config = get_config(args)
 
+
+def normalize_volume(np_volume: np.ndarray) -> np.ndarray:
+    """归一化到[0, 1]范围"""
+    min_val = np.min(np_volume)
+    max_val = np.max(np_volume)
+    if max_val != min_val:
+        return (np_volume - min_val) / (max_val - min_val)
+    else:
+        return np.zeros_like(np_volume)
+
+
+def respacing_resize(
+    image: sitk.Image, 
+    target_xy_spacing: Tuple[float, float],
+    target_xy_size: Tuple[int, int] = (512, 512),
+    interpolator=sitk.sitkLinear
+) -> sitk.Image:
+    """重采样到目标XY平面分辨率并调整尺寸"""
+    original_spacing = image.GetSpacing()
+    original_size = image.GetSize()
+
+    # 目标参数设置
+    target_spacing = (target_xy_spacing[0], target_xy_spacing[1], original_spacing[2])
+    target_size = (
+        int(round(original_size[0] * original_spacing[0] / target_spacing[0])),
+        int(round(original_size[1] * original_spacing[1] / target_spacing[1])),
+        original_size[2]  # 保持深度方向不变
+    )
+    # reorient all data into LPS
+    orienter = sitk.DICOMOrientImageFilter()
+    orienter.SetDesiredCoordinateOrientation("LPS")
+    lps_image = orienter.Execute(image)
+
+
+    # 执行重采样
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetOutputSpacing(target_spacing)
+    resampler.SetSize(target_size)
+    resampler.SetOutputDirection(lps_image.GetDirection())
+    resampler.SetOutputOrigin(lps_image.GetOrigin())
+    resampler.SetInterpolator(interpolator)
+    resampled_image = resampler.Execute(image)
+
+    # 转换为NumPy数组 (顺序: [depth, height, width])
+    np_image = sitk.GetArrayFromImage(resampled_image)
+    
+    # 获取重采样后的图像的最小值，用于填充
+    min_val = np.min(np_image)
+
+    # 中心裁剪/填充到目标尺寸
+    current_height, current_width = np_image.shape[1], np_image.shape[2]
+    
+    # 处理高度
+    if current_height < target_xy_size[1]:
+        pad = (target_xy_size[1] - current_height)
+        pad_before = pad // 2
+        pad_after = pad - pad_before
+        np_image = np.pad(np_image, ((0, 0), (pad_before, pad_after), (0, 0)), mode="constant", constant_values=min_val)
+    elif current_height > target_xy_size[1]:
+        start = (current_height - target_xy_size[1]) // 2
+        np_image = np_image[:, start:start+target_xy_size[1], :]
+
+    # 处理宽度
+    if current_width < target_xy_size[0]:
+        pad = (target_xy_size[0] - current_width)
+        pad_before = pad // 2
+        pad_after = pad - pad_before
+        np_image = np.pad(np_image, ((0, 0), (0, 0), (pad_before, pad_after)), mode="constant", constant_values=min_val)
+    elif current_width > target_xy_size[0]:
+        start = (current_width - target_xy_size[0]) // 2
+        np_image = np_image[:, :, start:start+target_xy_size[0]]
+
+    # 转换回SimpleITK图像
+    output_image = sitk.GetImageFromArray(np_image)
+    output_image.SetSpacing((target_spacing[0], target_spacing[1], original_spacing[2]))
+    return output_image
 
 neighbour_code_to_normals = [
     [[0, 0, 0]],
@@ -314,6 +391,7 @@ neighbour_code_to_normals = [
     [[0, 0, 0]]]
 
 
+
 def compute_surface_distances(mask_gt, mask_pred, spacing_mm):
     """Compute closest distances from all surface points to the other surface.
 
@@ -465,6 +543,7 @@ def compute_surface_distances(mask_gt, mask_pred, spacing_mm):
             "surfel_areas_pred": surfel_areas_pred}
 
 
+
 def compute_surface_dice_at_tolerance(surface_distances, tolerance_mm):
     distances_gt_to_pred = surface_distances["distances_gt_to_pred"]
     distances_pred_to_gt = surface_distances["distances_pred_to_gt"]
@@ -504,23 +583,18 @@ def calculate_metric_percase(pred, gt, label_tolerance, voxel_spacing, skip=Fals
 
 
 def test_single_volume(case, case_gt, net, test_save_path, FLAGS, num_classes):
-
-    image = np.load(case)['image']
-    label = np.load(case_gt)['image']
-
-    label = label.transpose(0,2,1)
-    image = image.transpose(0,2,1)
-
-    # for i in range(image.shape[0]):
-    #     img = (image[i] * 255).astype(np.uint8)
-    #     # print(img.shape)
-    #     # img = img.transpose()
-    #     Image.fromarray(img).save(f'test_image_{i}.png')
-    # exit(0)
-
+    
     target_xy_spacing = (1.0, 1.0)
 
+    # load image data from nii.gz
     image_orig = sitk.ReadImage(case.replace('3d/', 'imagesVal/').replace('.npz', '_0000.nii.gz'))
+    processed_image = respacing_resize(image_orig, target_xy_spacing, (512, 512))
+    np_volume = sitk.GetArrayFromImage(processed_image)  # [D, H, W]
+    np_volume = normalize_volume(np_volume)
+    slices = [np_volume[i, :, :] for i in range(np_volume.shape[0])]
+    image = np.stack(slices, axis=0)  # [N, 512, 512]
+    image = image.transpose(0,2,1)
+
     original_spacing = image_orig.GetSpacing()
     original_size = image_orig.GetSize()
     original_direct = image_orig.GetDirection()
@@ -531,16 +605,15 @@ def test_single_volume(case, case_gt, net, test_save_path, FLAGS, num_classes):
         int(round(original_size[1] * original_spacing[1] / target_spacing[1])),
         original_size[2]  # 保持深度方向不变
     )
-    
     image_orig = sitk.GetArrayFromImage(image_orig)
-    
+
+
     label_orig_orig = sitk.ReadImage(case.replace('3d/', 'labelsVal/').replace('.npz', '.nii.gz'))
     
     # # change the orientation of label to LPS
     # orienter = sitk.DICOMOrientImageFilter()
     # orienter.SetDesiredCoordinateOrientation("LPS")
     # label_orig = orienter.Execute(label_orig)
-    
     label_orig = sitk.GetArrayFromImage(label_orig_orig)
 
     # get the original orientation string
@@ -549,13 +622,13 @@ def test_single_volume(case, case_gt, net, test_save_path, FLAGS, num_classes):
     orientation = aff2axcodes(affine)
     orientation_str = ''.join(orientation)
 
+
     voxel_spacing = img.header.get_zooms()[:3]
+
 
     y_resample, x_resample, z_resample = target_size
     _, x_orig, y_orig = image_orig.shape
 
-
-    prediction = np.zeros_like(label)
     prediction_orig = np.zeros((image_orig.shape[0], 512, 512))
     for ind in range(image.shape[0]):
         slice = image[ind, :, :]
@@ -574,67 +647,63 @@ def test_single_volume(case, case_gt, net, test_save_path, FLAGS, num_classes):
             out = out.cpu().detach().numpy()
             pred = zoom(out, (x / 224, y / 224), order=0)
             pred_orig = zoom(out, (512 / 224, 512 / 224), order=0)
-            prediction[ind] = pred
             pred_orig = pred_orig.transpose(1,0)
             prediction_orig[ind] = pred_orig
 
     metric_list = []
     count_class = []
-
     # pet
     # label_tolerance = [0, 5, 3, 3, 3]
     # mri
     label_tolerance = [0, 5, 3, 3, 5, 2, 2, 2, 2, 2, 3, 5, 7, 3]
 
-    # # preprocess the prediction map back to original label oriention and size
-    # if x_resample < 512:
-    #     pad = (512 - x_resample)
-    #     pad_before = pad // 2
-    #     pad_after = pad - pad_before
-    #     prediction_orig = prediction_orig[:, pad_before:pad_before+x_resample, :]
-    # else:
-    #     pad = (x_resample - 512) // 2
-    #     pad_after = x_resample - 512 - pad
-    #     prediction_orig = np.pad(prediction_orig, ((0, 0), (pad, pad_after), (0, 0)), mode="constant", constant_values=0)
+    # preprocess the prediction map back to original label oriention and size
+    if x_resample < 512:
+        pad = (512 - x_resample)
+        pad_before = pad // 2
+        pad_after = pad - pad_before
+        prediction_orig = prediction_orig[:, pad_before:pad_before+x_resample, :]
+    else:
+        pad = (x_resample - 512) // 2
+        pad_after = x_resample - 512 - pad
+        prediction_orig = np.pad(prediction_orig, ((0, 0), (pad, pad_after), (0, 0)), mode="constant", constant_values=0)
 
-    # if y_resample < 512:
-    #     pad = (512 - y_resample)
-    #     pad_before = pad // 2
-    #     pad_after = pad - pad_before
-    #     prediction_orig = prediction_orig[:, :, pad_before:pad_before+y_resample]
-    # else:
-    #     pad = (y_resample - 512) // 2
-    #     pad_after = y_resample - 512 - pad
-    #     prediction_orig = np.pad(prediction_orig, ((0, 0), (0, 0), (pad, pad_after)), mode="constant", constant_values=0)
-
-    # assert prediction_orig.shape == (z_resample, x_resample, y_resample)
+    if y_resample < 512:
+        pad = (512 - y_resample)
+        pad_before = pad // 2
+        pad_after = pad - pad_before
+        prediction_orig = prediction_orig[:, :, pad_before:pad_before+y_resample]
+    else:
+        pad = (y_resample - 512) // 2
+        pad_after = y_resample - 512 - pad
+        prediction_orig = np.pad(prediction_orig, ((0, 0), (0, 0), (pad, pad_after)), mode="constant", constant_values=0)
 
 
-    # rezoom_prediction_orig = np.zeros((prediction_orig.shape[0], x_orig, y_orig))
-    # # rezoom the data due to sampling
-    # for idx in range(0, prediction_orig.shape[0]):
-    #     rezoom_prediction_orig[idx] = zoom(prediction_orig[idx], (x_orig / prediction_orig.shape[1], y_orig / prediction_orig.shape[2]), order=0)
+    assert prediction_orig.shape == (z_resample, x_resample, y_resample)
 
-    # output_image = sitk.GetImageFromArray(rezoom_prediction_orig)
-    
-    # print('orientation: ', orientation_str)
-    # orienter = sitk.DICOMOrientImageFilter()
-    # orienter.SetDesiredCoordinateOrientation(orientation_str)
-    # output_image = orienter.Execute(output_image)
+    rezoom_prediction_orig = np.zeros((prediction_orig.shape[0], x_orig, y_orig))
+    # rezoom the data due to sampling
+    for idx in range(0, prediction_orig.shape[0]):
+        rezoom_prediction_orig[idx] = zoom(prediction_orig[idx], (x_orig / prediction_orig.shape[1], y_orig / prediction_orig.shape[2]), order=0)
 
-    # print('final: ', sitk.GetArrayFromImage(output_image).shape)
-    # print('final: ', np.max(sitk.GetArrayFromImage(output_image)))
+    output_image = sitk.GetImageFromArray(rezoom_prediction_orig)
 
-    # # store prediction results
-    # sitk.WriteImage(
-    #     output_image,
-    #     os.path.join('pred-mri', case.split('/')[-1].replace('npz', 'nii.gz'))
-    # )
+    print('orientation: ', orientation_str)
+    orienter = sitk.DICOMOrientImageFilter()
+    orienter.SetDesiredCoordinateOrientation(orientation_str)
+    output_image = orienter.Execute(output_image)
 
+    print('final: ', sitk.GetArrayFromImage(output_image).shape)
+    print('final: ', np.max(sitk.GetArrayFromImage(output_image)))
+
+    # store prediction results
+    sitk.WriteImage(
+        output_image,
+        os.path.join('pred-mri', case.split('/')[-1].replace('npz', 'nii.gz'))
+    )
 
     for i in range(1, num_classes):
-        # metric_list.append(calculate_metric_percase(sitk.GetArrayFromImage(output_image) == i, label_orig == i, label_tolerance[i], voxel_spacing, skip=True))
-        metric_list.append(calculate_metric_percase(prediction == i, label == i, label_tolerance[i], (1.0, 1.0, 1.0), skip=True))
+        metric_list.append(calculate_metric_percase(sitk.GetArrayFromImage(output_image) == i, label_orig == i, label_tolerance[i], voxel_spacing, skip=True))
         count_class.append(np.sum(label_orig == i))
 
     print(np.mean(np.array(metric_list), axis=0))
@@ -669,7 +738,7 @@ def Inference(FLAGS):
     net.load_state_dict(torch.load(save_mode_path))
     print("init weight from {}".format(save_mode_path))
     net.eval()
-
+    
     metric_list = 0.0
     for idx in tqdm(list(range(0, len(image_list)))):
         case = image_list[idx]

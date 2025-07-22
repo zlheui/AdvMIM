@@ -69,7 +69,7 @@ CUDA_VISIBLE_DEVICES=0 python train.py --max_iterations 60000 --root_path ./MRI_
 To infer the testing cases, run this command:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python test_2D_fully_transformer.py --iternum 60000 --root_path ./MRI_list --exp flare25/ct-mri-new-exp-60000-full-exp-1 --num_classes 14
+CUDA_VISIBLE_DEVICES=0 python inference.py --iternum 60000 --root_path ./MRI_list --exp flare25/ct-mri-new-exp-60000-full-exp-1 --num_classes 14
 ```
 
 
@@ -112,13 +112,13 @@ Our method achieves the following performance on [FLARE25](https://www.codabench
 MRI Data
 | Dataset Name       | DSC(%) | NSD(%) |
 |--------------------|:------:|:------:|
-| Validation Dataset | 54.37% | 68.32% |
+| Validation Dataset | 54.74% | 57.13% |
 | Test Dataset       | (?) | (?) |
 
 PET Data
 | Dataset Name       | DSC(%) | NSD(%) |
 |--------------------|:------:|:------:|
-| Validation Dataset | 51.74% | 54.96% |
+| Validation Dataset | 52.62% | 32.50% |
 | Test Dataset       | (?) | (?) |
 
 ## Acknowledgement
