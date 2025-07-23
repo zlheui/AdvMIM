@@ -89,9 +89,19 @@ To run the inference using Docker, use the following command:
 > Note: This is the official inference script. When running predictions, please replace `input_dir` and `output_dir` with your own input and output directories. The input MRI or PET images must be in `.nii.gz` format.
 
 ```bash
-docker run --gpus "device=0" --runtime=nvidia -m 28G --name advmim --rm -v input_dir:/workspace/inputs/ -v output_dir:/workspace/outputs/ advmim_flare25_task3:latest /bin/bash -c "sh predict.sh MRI"
+docker run --gpus "device=0" \ 
+   --runtime=nvidia -m 28G \
+   --name advmim --rm \
+   -v input_dir:/workspace/inputs/ \
+   -v output_dir:/workspace/outputs/ \
+   advmim_flare25_task3:latest /bin/bash -c "sh predict.sh MRI"
 
-docker run --gpus "device=0" --runtime=nvidia -m 28G --name advmim --rm -v input_dir:/workspace/inputs/ -v output_dir:/workspace/outputs/ advmim_flare25_task3:latest /bin/bash -c "sh predict.sh PET"
+docker run --gpus "device=0" \
+   --runtime=nvidia -m 28G \
+   --name advmim --rm \
+   -v input_dir:/workspace/inputs/ \
+   -v output_dir:/workspace/outputs/ \
+   advmim_flare25_task3:latest /bin/bash -c "sh predict.sh PET"
 ```
 
 Docker Container and Model Checkpoints download link [Hugging Face](https://huggingface.co/zlheui2/FLARE25-Task3-AdvMIM/tree/main) 
@@ -101,16 +111,18 @@ Docker Container and Model Checkpoints download link [Hugging Face](https://hugg
 Our method achieves the following performance on [FLARE25](https://www.codabench.org/competitions/2296/)
 
 MRI Data
-| Dataset Name       | DSC(%) | NSD(%) |
-|--------------------|:------:|:------:|
-| Validation Dataset | 55.39% | 57.87% |
-| Test Dataset       | (?) | (?) |
+| Dataset Name                        | DSC(%) | NSD(%) |
+|-------------------------------------|:------:|:------:|
+| Validation Dataset (All Data Track) | 55.39% | 57.87% |
+| Validation Dataset (Coreset Track)  | 55.25% | 57.79% |
+| Test Dataset                        | (?)    | (?)    |
 
 PET Data
-| Dataset Name       | DSC(%) | NSD(%) |
-|--------------------|:------:|:------:|
-| Validation Dataset | 52.85% | 32.69% |
-| Test Dataset       | (?) | (?) |
+| Dataset Name                        | DSC(%) | NSD(%) |
+|-------------------------------------|:------:|:------:|
+| Validation Dataset (All Data Track) | 52.85% | 32.69% |
+| Validation Dataset (Coreset Track)  | 52.14% | 32.51% |
+| Test Dataset                        | (?)    | (?)    |
 
 ## Acknowledgement
 
